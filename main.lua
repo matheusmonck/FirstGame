@@ -1,14 +1,23 @@
 ---@diagnostic disable: lowercase-global
-
 function love.load()
-    anim8 = require 'libraries.anim8'
-    love.graphics.setDefaultFilter('nearest', 'nearest')
+    wf = require 'libraries/windfield'
+    world = wf.newWorld(0, 0)
+
+    camera = require 'libraries/camera'
+    cam = camera()
+
+    anim8 = require 'libraries/anim8'
+    love.graphics.setDefaultFilter("nearest", "nearest")
+
+    sti = require 'libraries/sti'
+    gameMap = sti('maps/testMap.lua')
 
     player = {}
+    player.collider = world:newBSGRectangleCollider(400, 250, 50, 100, 10)
+    player.collider:setFixedRotation(true)
     player.x = 400
     player.y = 200
-    player.speed = 5
-    player.sprite = love.graphics.newImage('sprites/parrot.png')
+    player.speed = 300
     player.spriteSheet = love.graphics.newImage('sprites/player-sheet.png')
     player.grid = anim8.newGrid(12, 18, player.spriteSheet:getWidth(), player.spriteSheet:getHeight())
 
@@ -21,42 +30,123 @@ function love.load()
     player.anim = player.animations.left
 
     background = love.graphics.newImage('sprites/background.png')
+
+    walls = {}
+    if gameMap.layers["paredes"] then
+        for i, obj in pairs(gameMap.layers["paredes"].objects) do
+            local wall = world:newRectangleCollider(obj.x, obj.y, obj.width, obj.height)
+            wall:setType('static')
+            table.insert(walls, wall)
+        end
+    end
+
+    sounds = {}
+    sounds.blip = love.audio.newSource('sounds/blip.wav', "static")
+    sounds.music = love.audio.newSource('sounds/music.mp3', "stream")
+    sounds.walk = love.audio.newSource('sounds/walk.mp3', "static")
+    sounds.music:setLooping(true)
+
+    sounds.music:play()
+
 end
 
 function love.update(dt)
     local isMoving = false
+
+    local vx = 0
+    local vy = 0
+
     if love.keyboard.isDown("d") or love.keyboard.isDown("right") then
-        player.x = player.x + player.speed
+        vx = player.speed
         player.anim = player.animations.right
         isMoving = true
     end
 
     if love.keyboard.isDown("a") or love.keyboard.isDown("left") then
-        player.x = player.x - player.speed
+        vx = player.speed * -1
         player.anim = player.animations.left
         isMoving = true
     end
 
     if love.keyboard.isDown("s") or love.keyboard.isDown("down") then
-        player.y = player.y + player.speed
+        vy = player.speed
         player.anim = player.animations.down
         isMoving = true
     end
 
     if love.keyboard.isDown("w") or love.keyboard.isDown("up") then
-        player.y = player.y - player.speed
+        vy = player.speed * -1
         player.anim = player.animations.up
         isMoving = true
     end
 
+    player.collider:setLinearVelocity(vx, vy)
+
     if isMoving == false then
         player.anim:gotoFrame(2)
     end
+    if isMoving then
+        sounds.walk:play()
+    end
+
+    world:update(dt)
+    player.x = player.collider:getX()
+    player.y = player.collider:getY()
 
     player.anim:update(dt)
+
+    -- Update camera position
+    cam:lookAt(player.x, player.y)
+
+    -- This section prevents the camera from viewing outside the background
+    -- First, get width/height of the game window
+    local w = love.graphics.getWidth()
+    local h = love.graphics.getHeight()
+
+    -- Left border
+    if cam.x < w / 2 then
+        cam.x = w / 2
+    end
+
+    -- Right border
+    if cam.y < h / 2 then
+        cam.y = h / 2
+    end
+
+    -- Get width/height of background
+    local mapW = gameMap.width * gameMap.tilewidth
+    local mapH = gameMap.height * gameMap.tileheight
+
+    -- Right border
+    if cam.x > (mapW - w / 2) then
+        cam.x = (mapW - w / 2)
+    end
+    -- Bottom border
+    if cam.y > (mapH - h / 2) then
+        cam.y = (mapH - h / 2)
+    end
 end
 
 function love.draw()
-    love.graphics.draw(background, 0, 0)
-    player.anim:draw(player.spriteSheet, player.x, player.y, nil, 10)
+    cam:attach()
+    gameMap:drawLayer(gameMap.layers["chao"])
+    gameMap:drawLayer(gameMap.layers["arvoresUnicas"])
+    gameMap:drawLayer(gameMap.layers["variasArvores"])
+    player.anim:draw(player.spriteSheet, player.x, player.y, nil, 6, nil, 6, 9)
+    --world:draw()
+    cam:detach()
+end
+
+function love.keypressed(key)
+    if key == "space" then
+        sounds.blip:play()
+    end
+
+    if key == "m" then
+        sounds.music:stop()
+    end
+    if key == "n" then
+        sounds.music:play()
+    end
+
 end
